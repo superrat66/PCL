@@ -1,0 +1,51 @@
+# 文件名：.github/workflows/sync-fork.yml
+# 作用：每天自动把上游 Meloong-Git/PCL 的 main 分支同步到你的 fork
+# 放进你 fork 仓库的 .github/workflows/ 目录后，Actions 会在每天定时跑
+
+name: Sync Upstream
+
+on:
+  schedule:
+    # 每天北京时间 00:00 触发（UTC+8 = 16:00 UTC）。GitHub 调度可能延迟几分钟，属正常
+    - cron: '0 16 * * *'
+  workflow_dispatch: {}   # 允许在 Actions 页面手动点 “Run workflow” 立即同步
+
+# 给工作流写入仓库内容的权限（push 到 fork 需要）
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork (full history)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sync with upstream
+        env:
+          UPSTREAM: https://github.com/Meloong-Git/PCL.git
+          BRANCH: main
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 添加（或更新）上游 remote
+          git remote add upstream "$UPSTREAM" || git remote set-url upstream "$UPSTREAM"
+          git fetch upstream
+
+          # 非破坏性合并：把上游 main 合进当前分支
+          # 如果你只是想“镜像”上游、不在乎 fork 上的本地改动，可把下面这行
+          # 换成：git push --force origin "upstream/$BRANCH:refs/heads/$BRANCH"
+          git merge "upstream/$BRANCH" --no-edit
+
+          # 推回你的 fork
+          git push origin "HEAD:$BRANCH"
+
+      - name: Report
+        if: always()
+        run: |
+          echo "Upstream: $(git rev-parse --short upstream/main 2>/dev/null || echo n/a)"
+          echo "Local fork HEAD: $(git rev-parse --short HEAD)"
